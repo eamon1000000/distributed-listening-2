@@ -87,11 +87,6 @@ function effectNodes(ctx, fx) {
       };
     }
 
-    case 'pan': {
-      // StereoPanner is missing on old Safari: there the sound just isn't panned
-      const p = ctx.createStereoPanner ? ctx.createStereoPanner() : ctx.createGain();
-      return { input: p, output: p, params: p.pan ? { pan: [{ param: p.pan, map: same }] } : {}, extra: [], tail: 0 };
-    }
   }
   return null;
 }

@@ -84,7 +84,8 @@ All three use the same score format, below.
 - **Piece:** title, number of groups, end time.
 - **Sounds:** add audio files; each gets a name the events use (renaming one renames it in the events).
 - **Effects:** each group's chain, in order; *Copy to every group* gives the others the same chain.
-- **Events:** time, groups, and what happens (play, stop, ratio, spread, level, set). *Play once* makes a one-shot, with an optional *Fade out end*.
+- **Events:** time, groups, and what happens (play, stop, ratio, spread, level). *Play once* makes a one-shot, with an optional *Fade out end*.
+- **Effect changes:** time, groups, the effect setting, its new value and an optional glide; saved as `effectEvents`, apart from the events.
 - **Timeline and Preview:** the conductor's timeline, updated as you type, with mistakes listed under it. **Preview** plays the ticked groups here, as several phones each, with drift and effects; press it again to hear changes. *Preview phones per group* is only for the preview: in the room any number of phones can join, and the more phones in a group, the wider its drift spreads (phone *k* drifts *k* − 1 times the ratio). Preview with about as many as you expect per group.
 - **Save:** **Download ZIP** gives the piece's folder (`score.json` and its sounds); upload its contents to your repo. **Copy score.json** if you only changed the score.
 
@@ -138,6 +139,7 @@ On the score:
 | `credit` | A credit line, shown on the conductor and the phones (optional) |
 | `sounds` | Short names for sound files, `{ "rain": "audio/rain.mp3" }` (optional) |
 | `effects` | Each group's effect chain (optional, see *Effects*) |
+| `effectEvents` | Effect changes during the piece, in their own list (optional, see *Effects*) |
 
 On each event, `at` (`"m:ss"` or seconds), `groups` (`"ABC"`, `["A","D"]`, or `"all"`, the default), and one action:
 
@@ -148,7 +150,6 @@ On each event, `at` (`"m:ss"` or seconds), `groups` (`"ABC"`, `["A","D"]`, or `"
 | `ratio: r` | Drift inside the groups | `glide` (s), `sound` (only that sound) |
 | `spread: s` | Drift across groups (whole piece) | `glide` (s) |
 | `level: v` | Changes loudness | `fade` (s), `sound` |
-| `set: "id.setting"` | Changes an effect setting | `to` (the new value), `glide` (s) |
 
 A group can play several sounds at once, which is how crossfades work: stop one sound with a long fade while another fades in.
 
@@ -169,18 +170,22 @@ Each group can run its sounds through a chain of effects, in order (`"BC"` gives
 }
 ```
 
-Change a setting during the piece with a `set` event, instantly or with a `glide`:
+Then change any setting during the piece, instantly or with a `glide`. Effect changes go in their own list, `effectEvents`, next to `events`, so the sound events stay easy to read:
 
 ```json
-{ "at": "0:00", "groups": "A", "set": "lowpass.frequency", "to": 6000, "glide": 20 }
+"effectEvents": [
+  { "at": "0:00", "groups": "A",  "set": "lowpass.frequency", "to": 6000, "glide": 20 },
+  { "at": "0:30", "groups": "CD", "set": "reverb.mix", "to": 0.8, "glide": 10 }
+]
 ```
+
+Each has `at` and `groups` like an event, `set` (the setting), `to` (the new value) and an optional `glide` (s).
 
 | Type | Settings (default, range) | Fixed (set once) |
 |---|---|---|
 | `lowpass` `highpass` `bandpass` | `frequency` (1000 Hz, 20–20000), `q` (1, 0.1–30) | `lfo: { rate: 0.2, min: 200, max: 2000 }` sweeps the cutoff; `rate` then replaces `frequency` as a setting |
 | `reverb` | `mix` (0.3, 0–1) | `decay` (4 s, 0.1–20), `preDelay` (0.01 s, 0–1) |
 | `delay` | `time` (0.25 s, 0.01–5), `feedback` (0.4, 0–0.95), `mix` (0.3, 0–1) | |
-| `pan` | `pan` (0, −1 left … 1 right) | |
 
 A setting is named `id.setting`; the id is the effect's type unless you give it an `id` (two effects of the same type in a group need different ids: `"id": "low2"` → `low2.frequency`). *Effects study* in the menu uses every type.
 

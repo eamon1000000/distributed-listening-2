@@ -16,7 +16,7 @@ conductor.html   Conductor page (open on the laptop / projector)
 net.js           Shared: broker connection, topics, the phase math, ring drawing
 score-engine.js  Shared: compiles a score into per-group layers; drift maths
 scores.js        Sound folder, Free-mode sound buttons, and the scores (edit this to write your own)
-effects.js       Shared: each group's effect chain (filters, reverb, delay, pan)
+effects.js       Shared: each group's effect chain (filters, reverb, delay)
 performer.js     Clock sync, scheduling, drift correction, audio
 conductor.js     Shared clock, state of the piece, roster, controls
 ensemble.css     Layout (on top of ../style.css)
@@ -111,7 +111,7 @@ Add an entry to the `SCORES` list in `scores.js`:
 | `spread: s` | Drift *across* groups, for the whole piece. Option: `glide` (s) |
 | `level: v` | Change loudness. Options: `fade` (s), `sound` |
 | `effects` | On the score (optional): each group's effect chain (see *Effects* below) |
-| `set: 'id.setting'` | Change an effect setting in those groups. Options: `to` (the new value), `glide` (s) |
+| `effectEvents` | On the score (optional): effect changes during the piece, in their own list (see *Effects* below) |
 
 A group can play several sounds at once, which is how crossfades work. Mistakes (an unknown group, a missing sound file, a bad time) show in red under the timeline.
 
@@ -128,18 +128,22 @@ effects: {
 },
 ```
 
-Then change any setting during the piece with `set`, instantly or with a `glide`:
+Then change any setting during the piece, instantly or with a `glide`. Effect changes go in their own list, `effectEvents`, next to `events`, so the sound events stay easy to read:
 
 ```js
-{ at: '0:00', groups: 'A', set: 'lowpass.frequency', to: 6000, glide: 20 },
+effectEvents: [
+  { at: '0:00', groups: 'A',  set: 'lowpass.frequency', to: 6000, glide: 20 },
+  { at: '0:30', groups: 'CD', set: 'reverb.mix', to: 0.8, glide: 10 },
+],
 ```
+
+Each has `at` and `groups` like an event, `set` (the setting), `to` (the new value) and an optional `glide` (s).
 
 | Type | Settings (default, range) | Fixed (set once) |
 |---|---|---|
 | `lowpass` `highpass` `bandpass` | `frequency` (1000 Hz, 20–20000), `q` (1, 0.1–30) | `lfo`: `{ rate: 0.2, min: 200, max: 2000 }` sweeps the cutoff; then `rate` replaces `frequency` as a setting |
 | `reverb` | `mix` (0.3, 0–1) | `decay` (4 s, 0.1–20), `preDelay` (0.01 s, 0–1) |
 | `delay` | `time` (0.25 s, 0.01–5), `feedback` (0.4, 0–0.95), `mix` (0.3, 0–1) | |
-| `pan` | `pan` (0, −1 left … 1 right) | |
 
 A setting is named `id.setting`, where the id is the effect's type unless you give it an `id`: two effects of the same type in one group need different ids (`id: 'low2'` → `low2.frequency`). Like the fades and drift, effect changes are worked out from the score in advance, so every phone in a group changes at the same moment, and a phone joining late starts with the right values. The effects are built from Web Audio nodes only (no library). *Effects study* in the menu uses every type, and the conductor's timeline shows each group's chain at the right end of its lane.
 

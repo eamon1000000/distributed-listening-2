@@ -82,7 +82,16 @@
     <div id="events"></div>
     <button class="btn btn-reset ed-btn" onclick="addEvent()">+ Add event</button>
     <button class="btn btn-reset ed-btn" onclick="sortEvents()">Sort by time</button>
-    <p class="hint"><em>Play</em> starts a sound in the chosen groups (<em>Play once</em> plays the file once instead of looping; <em>Fade out end</em> fades over its last seconds), <em>stop</em> fades it out. <em>Ratio</em> drifts the phones of a group apart; <em>spread</em> drifts the groups apart (the whole piece). <em>Level</em> changes loudness; <em>set</em> changes an effect setting. Fades and glides are in seconds.</p>
+    <p class="hint"><em>Play</em> starts a sound in the chosen groups (<em>Play once</em> plays the file once instead of looping; <em>Fade out end</em> fades over its last seconds), <em>stop</em> fades it out. <em>Ratio</em> drifts the phones of a group apart; <em>spread</em> drifts the groups apart (the whole piece). <em>Level</em> changes loudness. Fades and glides are in seconds.</p>
+  </section>
+
+  <!-- Effect events -->
+  <section class="ed-sec">
+    <div class="ctrl-title">Effect changes · settings of the effects above, over the piece</div>
+    <div id="effectEvents"></div>
+    <button class="btn btn-reset ed-btn" onclick="addEffectEvent()">+ Add effect change</button>
+    <button class="btn btn-reset ed-btn" onclick="sortEffectEvents()">Sort by time</button>
+    <p class="hint">Each change sets one effect setting in the chosen groups, at once or with a <em>glide</em> (seconds). They're saved as <code>effectEvents</code>, apart from the events.</p>
   </section>
 
   <!-- Timeline + preview -->

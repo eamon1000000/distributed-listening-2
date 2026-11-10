@@ -16,8 +16,9 @@ const TYPO_TIME = 600; // an event later than 10 minutes is probably a typo
 // credit:  a credit line, shown on the conductor and the phones (optional)
 // effects: { A: [effect, …] }           as in score.json, one list per group
 // events:  [event, …]                   as in score.json
+// effectEvents: [effect event, …]       as in score.json: { at, groups, set, to, glide }
 let doc = blankDoc();
-function blankDoc() { return { title: '', credit: '', groups: 2, end: '', sounds: [], effects: {}, events: [] }; }
+function blankDoc() { return { title: '', credit: '', groups: 2, end: '', sounds: [], effects: {}, events: [], effectEvents: [] }; }
 
 const groupLetters = () => LETTERS.slice(0, doc.groups).split('');
 const $ = id => document.getElementById(id);
@@ -67,6 +68,11 @@ function toScore(forSaving = false) {
     if (out.groups === 'all' || out.spread !== undefined) delete out.groups;
     return out;
   });
+  if (doc.effectEvents.length) score.effectEvents = doc.effectEvents.map(e => {
+    const out = clean(e);
+    if (out.groups === 'all') delete out.groups;
+    return out;
+  });
   if (doc.end.trim()) score.end = doc.end.trim();
   return score;
 }
@@ -98,7 +104,13 @@ function fromScore(score, locate) {
       d.effects[g] = [...(d.effects[g] || []), ...JSON.parse(JSON.stringify(list))];
     }
   }
-  d.events = (score.events || []).map(e => ({ ...e, at: String(e.at ?? '0:00'), groups: groupsString(e.groups) }));
+  const withGroups = e => ({ ...e, at: String(e.at ?? '0:00'), groups: groupsString(e.groups) });
+  // Effect changes have their own list; any left among the events (older
+  // pieces) move there
+  const events = Array.isArray(score.events) ? score.events : [];
+  d.events = events.filter(e => e.set === undefined).map(withGroups);
+  d.effectEvents = [...(Array.isArray(score.effectEvents) ? score.effectEvents : []), ...events.filter(e => e.set !== undefined)]
+    .map(withGroups);
   return d;
 }
 
@@ -129,6 +141,10 @@ function changed() {
     }
     if (e.play !== undefined && !e.play) problems.push(`event ${i + 1}: choose a sound to play`);
   });
+  doc.effectEvents.forEach((e, i) => {
+    const t = parseTime(e.at);
+    if (t > TYPO_TIME) problems.push(`effect event ${i + 1}: at ${fmtTime(t)}, is that a typo?`);
+  });
   $('errors').replaceChildren(...[...new Set(problems)].map(p => el('li', { textContent: p })));
 }
 
@@ -143,7 +159,7 @@ function renderLoop() {
   requestAnimationFrame(renderLoop);
 }
 // ═══════════════════════════════════════════════════════════════════════════════
-// FORM: piece, sounds, effects, events
+// FORM: piece, sounds, effects, events, effect events
 // ═══════════════════════════════════════════════════════════════════════════════
 function render() {
   $('title').value = doc.title;
@@ -267,7 +283,7 @@ function effectRow(g, list, fx, i) {
       onclick: () => { list.splice(i, 1); render(); } }));
 }
 
-// Every "id.setting" an event could set in groups `gs`
+// Every "id.setting" an effect event could change in groups `gs`
 function effectTargets(gs) {
   const out = new Set();
   for (const g of gs) for (const fx of doc.effects[g] || []) {
@@ -289,9 +305,9 @@ const ACTIONS = {
   ratio:  { fields: [['ratio', 'num', 'Ratio'], ['glide', 'num', 'Glide'], ['sound', 'soundOpt', 'Only sound']], start: { ratio: 1.01 } },
   spread: { fields: [['spread', 'num', 'Spread'], ['glide', 'num', 'Glide']], start: { spread: 1.005 }, allGroups: true },
   level:  { fields: [['level', 'num', 'Level'], ['fade', 'num', 'Fade'], ['sound', 'soundOpt', 'Only sound']], start: { level: 0.5, fade: 2 } },
-  // "set": "" until a setting is chosen, so the event still reads as a "set"
-  set:    { fields: [['set', 'target', 'Effect setting'], ['to', 'num', 'To'], ['glide', 'num', 'Glide']], start: { set: '' } },
 };
+// An effect event's fields ("set" stays "" until a setting is chosen)
+const EFFECT_EVENT_FIELDS = [['set', 'target', 'Effect setting'], ['to', 'num', 'To'], ['glide', 'num', 'Glide']];
 const FIELD_HINT = { ratio: '1 = none', fade: 's', glide: 's', level: '0–1', spread: '1 = none', to: '', fadeOut: 's' };
 
 // Which action an event is (same precedence as compileScore)
@@ -299,7 +315,6 @@ function actionOf(e) {
   if (e.spread !== undefined) return 'spread';
   if (e.play !== undefined) return 'play';
   if (e.stop !== undefined) return 'stop';
-  if (e.set !== undefined) return 'set';
   if (e.ratio !== undefined) return 'ratio';
   if (e.level !== undefined) return 'level';
   return 'play';
@@ -312,9 +327,25 @@ function addEvent() {
   changed();
 }
 
+function addEffectEvent() {
+  const last = doc.effectEvents[doc.effectEvents.length - 1];
+  doc.effectEvents.push({ at: last ? last.at : '0:00', groups: 'all', set: effectTargets(groupLetters())[0] ?? '' });
+  renderEvents();
+  changed();
+}
+
+// Stable, like the engine
+const byTime = list => list.map((e, i) => ({ e, i, t: parseTime(e.at) }))
+  .sort((a, b) => (a.t - b.t) || (a.i - b.i)).map(x => x.e);
+
 function sortEvents() {
-  doc.events = doc.events.map((e, i) => ({ e, i, t: parseTime(e.at) }))
-    .sort((a, b) => (a.t - b.t) || (a.i - b.i)).map(x => x.e); // stable, like the engine
+  doc.events = byTime(doc.events);
+  renderEvents();
+  changed();
+}
+
+function sortEffectEvents() {
+  doc.effectEvents = byTime(doc.effectEvents);
   renderEvents();
   changed();
 }
@@ -333,9 +364,9 @@ function groupToggles(e, onChange) {
     el('button', { class: 'ed-toggle' + (e.groups === 'all' ? ' on' : ''), textContent: 'all', type: 'button', onclick: () => set([]) }));
 }
 
-function eventField(e, [key, kind, label]) {
-  // An event's own action key stays present (as "") so it keeps its action
-  const own = key === actionOf(e);
+// `own`: the event's own action key, which stays present (as "") so the
+// event keeps its action
+function eventField(e, [key, kind, label], own = key === actionOf(e)) {
   const select = (options, blank) => el('select', { class: 'score-sel',
     onchange: ev => { e[key] = ev.target.value === '' ? (own ? '' : undefined) : ev.target.value; changed(); } },
     ...(blank !== undefined ? [el('option', { value: '', textContent: blank })] : []),
@@ -356,7 +387,25 @@ function eventField(e, [key, kind, label]) {
   }
 }
 
+// Copy and Remove for a row of `list`, at the right end of the row
+function rowActions(list, i) {
+  return el('span', { class: 'ed-actions' },
+    el('button', { class: 'btn btn-reset ed-btn', textContent: 'Copy', title: 'Duplicate this row',
+      onclick: () => { list.splice(i + 1, 0, JSON.parse(JSON.stringify(list[i]))); renderEvents(); changed(); } }),
+    el('button', { class: 'btn btn-reset ed-btn', textContent: 'Remove',
+      onclick: () => { list.splice(i, 1); renderEvents(); changed(); } }));
+}
+
+// Renders both lists: the events and the effect events
 function renderEvents() {
+  $('effectEvents').replaceChildren(...doc.effectEvents.map((e, i) => el('div', { class: 'ed-event' },
+    el('span', { class: 'ed-num', textContent: i + 1 }),
+    field('At', el('input', { type: 'text', value: e.at, class: 'from-ctrl', placeholder: 'm:ss',
+      oninput: ev => { e.at = ev.target.value.trim(); changed(); } })),
+    field('Groups', groupToggles(e, () => { renderEvents(); changed(); })),
+    ...EFFECT_EVENT_FIELDS.map(f => eventField(e, f, f[0] === 'set')),
+    rowActions(doc.effectEvents, i))));
+
   $('events').replaceChildren(...doc.events.map((e, i) => {
     const action = actionOf(e);
     const spec = ACTIONS[action];
@@ -374,12 +423,7 @@ function renderEvents() {
           renderEvents(); changed();
         } }, ...Object.keys(ACTIONS).map(a => el('option', { value: a, textContent: a, selected: a === action })))),
       ...spec.fields.map(f => eventField(e, f)),
-      // Copy and Remove stay together, at the right end of the row
-      el('span', { class: 'ed-actions' },
-        el('button', { class: 'btn btn-reset ed-btn', textContent: 'Copy', title: 'Duplicate this event',
-          onclick: () => { doc.events.splice(i + 1, 0, JSON.parse(JSON.stringify(e))); renderEvents(); changed(); } }),
-        el('button', { class: 'btn btn-reset ed-btn', textContent: 'Remove',
-          onclick: () => { doc.events.splice(i, 1); renderEvents(); changed(); } })));
+      rowActions(doc.events, i));
   }));
 }
 

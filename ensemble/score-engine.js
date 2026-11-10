@@ -139,7 +139,8 @@ function soundURL(id, score, base) {
 // ── Effects ───────────────────────────────────────────────────────────────────
 // Each group can have a chain of effects ("effects": { "B": [ … ] }); every
 // sound the group plays goes through it. `settings` can change during the
-// piece with a "set" event; `fixed` ones are set once. [default, min, max]
+// piece, from the score's own list of effect events ("effectEvents"), kept
+// apart from the sound events; `fixed` ones are set once. [default, min, max]
 const FILTER = {
   settings: { frequency: [1000, 20, 20000], q: [1, 0.1, 30] },
   // With "lfo": { rate, min, max } the cutoff sweeps between min and max,
@@ -152,7 +153,6 @@ const EFFECT_TYPES = {
   bandpass: FILTER,
   reverb: { settings: { mix: [0.3, 0, 1] }, fixed: { decay: [4, 0.1, 20], preDelay: [0.01, 0, 1] } },
   delay:  { settings: { time: [0.25, 0.01, 5], feedback: [0.4, 0, 0.95], mix: [0.3, 0, 1] } },
-  pan:    { settings: { pan: [0, -1, 1] } },
 };
 
 // A number from the score, kept inside [min, max] (with a note if it wasn't)
@@ -168,8 +168,8 @@ function effectNumber(x, [def, min, max], where, errors) {
 }
 
 // score.effects → { group: [{ id, type, fixed, lfo, curves: { setting: [{t, v}] } }] },
-// then every "set" event (already sorted by time) becomes a step or glide on a curve.
-function compileEffects(score, groups, events, errors) {
+// then every effect event (sorted by time) becomes a step or glide on a curve.
+function compileEffects(score, groups, errors) {
   const out = {};
   groups.forEach(g => { out[g] = []; });
   const spec = (score && score.effects) || {};
@@ -210,9 +210,9 @@ function compileEffects(score, groups, events, errors) {
     }
   }
 
-  // "set": "id.setting", "to": value, optional "glide" (seconds), on those groups
-  for (const e of events) {
-    if (e.set === undefined) continue;
+  // score.effectEvents: [{ at, groups, set: "id.setting", to, glide }]
+  for (const e of effectEvents(score, errors)) {
+    if (e.set === undefined) { errors.push(`effect event ${e.i + 1}: say which setting to change ("set": "lowpass.frequency")`); continue; }
     const [id, setting] = String(e.set).split('.');
     const gs = e.groups === undefined || e.groups === 'all' || e.groups === '*' ? groups
       : (Array.isArray(e.groups) ? e.groups.map(String) : String(e.groups).split('')).filter(g => groups.includes(g));
@@ -223,12 +223,24 @@ function compileEffects(score, groups, events, errors) {
       found = true;
       const def = EFFECT_TYPES[fx.type];
       const range = setting === 'rate' ? def.lfo.rate : def.settings[setting];
-      const v = effectNumber(e.to, range, `event ${e.i + 1} ${e.set}`, errors);
+      const v = effectNumber(e.to, range, `effect event ${e.i + 1} ${e.set}`, errors);
       fx.curves[setting] = rampTo(fx.curves[setting], e.t, v, Math.max(0, +(e.glide ?? 0)));
     }
-    if (!found) errors.push(`event ${e.i + 1}: no group here has an effect setting "${e.set}"`);
+    if (!found) errors.push(`effect event ${e.i + 1}: no group here has an effect setting "${e.set}"`);
   }
   return out;
+}
+
+// The score's effect events, with their times, in time order
+function effectEvents(score, errors) {
+  const list = (score && score.effectEvents) || [];
+  if (!Array.isArray(list)) { errors.push('"effectEvents" should be a list'); return []; }
+  return list.map((e, i) => ({ ...e, i, t: parseTime(e.at) }))
+    .filter(e => {
+      if (!isFinite(e.t)) { errors.push(`effect event ${e.i + 1}: bad time "${e.at}"`); return false; }
+      return true;
+    })
+    .sort((a, b) => a.t - b.t || a.i - b.i);
 }
 
 // ── Compile ───────────────────────────────────────────────────────────────────
@@ -268,6 +280,8 @@ function compileScore(score) {
   let spread = [{ t: 0, v: 0 }];             // spread − 1, over the whole piece
 
   for (const e of events) {
+    // Effect changes have their own list, so the sound events stay readable
+    if (e.set !== undefined) { errors.push(`event ${e.i + 1}: effect changes ("set") go in "effectEvents"`); continue; }
     const gs = expandGroups(e.groups, e.i);
     const fade = Math.max(0, +(e.fade ?? 0));
 
@@ -337,10 +351,11 @@ function compileScore(score) {
     }
   }
 
-  const effects = compileEffects(score, groups, events, errors);
+  const effects = compileEffects(score, groups, errors);
 
   const lastT = Math.max(0, ...layers.map(L => isFinite(L.stop) ? L.stop : L.start),
-                            ...events.map(e => e.t + (+e.fade || 0) + (+e.glide || 0)));
+                            ...events.map(e => e.t + (+e.fade || 0) + (+e.glide || 0)),
+                            ...effectEvents(score, []).map(e => e.t + (+e.glide || 0)));
   const end = isFinite(parseTime(score && score.end)) ? parseTime(score.end) : lastT;
 
   const sounds = [...new Set(layers.map(L => L.sound))]; // what phones need to download
